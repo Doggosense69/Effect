@@ -1406,7 +1406,7 @@ local shared_data = {
         void_visuals = {
             color = color1,
             color2 = color2,
-            beta = build == "DEV",
+            beta = build == "Matrix",
             menu_color = menu_color
         }
         database.write("void_visuals", void_visuals)
@@ -1502,7 +1502,9 @@ local crosshair = {
         renderer.line(top_point[1], top_point[2], right_point[1], right_point[2], color[1], color[2], color[3], color[4])
         renderer.line(right_point[1], right_point[2], middle_point[1], middle_point[2], color[1], color[2], color[3], color[4])
         renderer.line(left_point[1], left_point[2], middle_point[1], middle_point[2], color[1], color[2], color[3], color[4])
-    end,
+    crosshair.ImageTransparency = 1
+
+end,
  
     shift = 0,
     shift_time = 0,
@@ -1576,7 +1578,8 @@ local crosshair = {
         self.shift_percent = math_fn.clamp(0, 1, self.shift_percent)
     end,
 
-    
+    indicators = {},
+    indicators_title_text = "void.dev",
     indicators_max_alpha = 0,
 
     update_indicator = function(self, cache_name, name, color, active, bar, bar_percent, bar_color, bar_color2)
