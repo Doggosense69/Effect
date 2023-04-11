@@ -1576,8 +1576,7 @@ local crosshair = {
         self.shift_percent = math_fn.clamp(0, 1, self.shift_percent)
     end,
 
-    indicators = {},
-    indicators_title_text = "void.dev",
+    
     indicators_max_alpha = 0,
 
     update_indicator = function(self, cache_name, name, color, active, bar, bar_percent, bar_color, bar_color2)
