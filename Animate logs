@@ -1,0 +1,368 @@
+local client_screen_size, client_set_event_callback, client_userid_to_entindex = client.screen_size, client.set_event_callback, client.userid_to_entindex
+local entity_get_local_player, entity_get_player_name, entity_get_prop = entity.get_local_player, entity.get_player_name, entity.get_prop
+local globals_frametime, globals_realtime = globals.frametime, globals.realtime
+local ui_new_slider, ui_new_combobox, ui_reference, ui_set_visible, ui_new_color_picker, ui_new_label, ui_set_callback, ui_new_multiselect, ui_new_checkbox, ui_get = ui.new_slider, ui.new_combobox, ui.reference, ui.set_visible, ui.new_color_picker, ui.new_label, ui.set_callback, ui.new_multiselect, ui.new_checkbox, ui.get
+local renderer_gradient, renderer_text, renderer_measure_text= renderer.gradient, renderer.text, renderer.measure_text
+local math_abs = math.abs
+local table_remove, table_concat =  table.remove, table.concat
+local string_upper = string.upper
+local ipairs, pairs, unpack = ipairs, pairs, unpack
+--end of local variables
+
+local lerp = function(x, v, t)
+    local delta = v - x;
+
+    if math_abs(delta) < 0.005 then
+        return v
+    end
+
+    return x + delta * t
+end
+
+local has = function(x, str)
+    local typeof = type(x);
+
+    if typeof == 'string' then
+        return x:find(str)
+    elseif typeof == 'table' then
+        for key, value in pairs(x) do
+            if value == str then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    return x == str
+end
+
+local color_hex = function(r, g, b, a)
+    return ('\a%02X%02X%02X%02X'):format(r, g, b, a or 255)
+end
+
+local screen = {client_screen_size()};
+
+local hitgroups = {
+    [0] = 'Generic',
+    'Head',
+    'Chest',
+    'Stomach',
+    'Left arm',
+    'Right arm',
+    'Left leg',
+    'Right leg',
+    'Neck',
+    [10] = 'Gear',
+};
+
+local hit_types = {
+    knife = 'Knifed',
+    inferno = 'Burned',
+    hegrenade = 'Naded',
+};
+
+local miss_types = {
+    'unknown',
+    'spread',
+    'prediction error',
+    'damage rejection',
+    'unregistered shot',
+    'death',
+};
+
+local miss_colors = {
+    [ miss_types[ 1 ] ] = {200, 0, 0, 255};
+    [ miss_types[ 2 ] ] = {180, 255, 0, 255};
+    [ miss_types[ 3 ] ] = {255, 180, 0, 255};
+    [ miss_types[ 4 ] ] = {200, 0, 0, 255};
+    [ miss_types[ 5 ] ] = {128, 128, 128, 255};
+    [ miss_types[ 6 ] ] = {100, 100, 100, 255};
+}
+
+local ref = {};
+ref.color = ui_reference('MISC', 'Settings', 'Menu color');
+
+local menu = {};
+menu.enable = ui_new_checkbox('RAGE', 'Aimbot', '\ae3a566FF<Animate: \aFFFFFFC6Logs', false);
+menu.attachments = ui_new_multiselect('RAGE', 'Aimbot', 'Logs attachments', 'Centered fade', 'Smooth animations', 'Bold font');
+menu.limit = ui_new_slider('RAGE', 'Aimbot', 'Logs limit', 4, 12, 6, true, '/', 1, {[6] = 'Default'});
+menu.smooth = ui_new_slider('RAGE', 'Aimbot', 'Logs smooth', 4, 12, 10, true, '%', 0.1, {[10] = 'Default'});
+menu.time = ui_new_slider('RAGE', 'Aimbot', 'Logs timer', 1, 5, 3, true, 'sc', 1, {[3] = 'Default'});
+menu.base_label = ui_new_label('RAGE', 'Aimbot', 'Base color');
+menu.base_color = ui_new_color_picker('RAGE', 'Aimbot', 'Base colorpicker', ui_get(ref.color));
+menu.color_choose = ui_new_combobox('RAGE', 'Aimbot', 'Current miss color', unpack(miss_types));
+
+for key, value in ipairs(miss_types) do
+    local name = value:gsub('^%l', string_upper);
+
+    menu[ value .. '_label' ] = ui_new_label('RAGE', 'Aimbot', name .. ' color');
+    menu[ value .. '_color' ] = ui_new_color_picker('RAGE', 'Aimbot', name .. ' colorpicker', unpack(miss_colors[ value ]));
+end
+
+local logs = {};
+logs.aimbot_data = {};
+
+logs.ui_color = function(item)
+    local combo = ui_get(item);
+
+    for key, value in pairs(menu) do
+        if not key:find('base_') and (key:find('_color') or key:find('_label')) then
+            local current = key:gsub('_color', ''):gsub('_label', '');
+
+            ui_set_visible(value, current == combo);
+        end
+
+        ::skip::
+    end
+end
+
+logs.ui_handle = function(item)
+    local bool = ui_get(item);
+
+    for key, value in pairs(menu) do
+        if key == 'enable' then
+            goto skip
+        end
+        
+        ui_set_visible(value, bool);
+        
+        ::skip::
+    end
+    
+    if bool then
+        logs.ui_color(menu.color_choose);
+    end
+end
+
+ui_set_callback(menu.color_choose, logs.ui_color);
+
+logs.paint = function()
+    local pos = {screen[1] * 0.5, screen[2] * 0.88};
+    local limit = ui_get(menu.limit);
+    local smooth = ui_get(menu.smooth) * 0.6;
+
+    local flags = 'cd';
+
+    if has(ui_get(menu.attachments), 'Bold font') then
+        flags = flags .. 'b';
+    end
+
+    local logs_size = #logs;
+    for key = logs_size, 1, -1 do
+        local value = logs[ key ];
+
+        if value.alpha == 1 then
+            table_remove(logs, key);
+            goto skip
+        end
+
+        local fullstr = table_concat(value.args, '');
+        local alpha = 1 - math_abs(value.alpha);
+
+        local base_color = {value.color[1], value.color[2], value.color[3], value.color[4] * alpha};
+
+        local base_hex = color_hex(unpack(base_color));
+        local alternative = color_hex(255, 255, 255, 200 * alpha);
+        
+        local string = alternative;
+        for index, text in ipairs(value.args) do
+            local temp = text;
+
+            if index % 2 == 0 then
+                temp = base_hex .. temp .. alternative;
+            end
+
+            string = string .. temp;
+        end
+
+        local x, y = pos[1] + 100 * value.alpha, pos[2];
+
+        --[[
+            World of Tanks Glow
+            xd
+        ]]
+
+        local text_sz = {renderer_measure_text(flags, fullstr)};
+
+        if has(ui_get(menu.attachments), 'Centered fade') then
+            local gradient_size = {text_sz[1] / 3 * alpha, text_sz[2]};
+    
+            base_color[4] = base_color[4] * 0.2;
+            
+            -- [r1, g1, b1, a1, r2, g2, b2, a2, ltr]
+            local extra_args = {base_color[1], base_color[2], base_color[3], base_color[4], base_color[1], base_color[2], base_color[3], 0, true};
+
+            renderer_gradient(x, y - text_sz[2] / 2, -gradient_size[1], gradient_size[2], unpack(extra_args));
+            renderer_gradient(x, y - text_sz[2] / 2, gradient_size[1], gradient_size[2], unpack(extra_args));
+        end
+        
+        renderer_text(x, y, 255, 255, 255, 200 * alpha, flags, 0, string);
+
+        local height = text_sz[2] + 5;
+
+        if has(ui_get(menu.attachments), 'Smooth animations') then
+            height = height * alpha;
+        end
+
+        pos[2] = pos[2] - height;
+
+        if (globals_realtime() - value.time > 0) or (key > limit) then
+            value.alpha = lerp(value.alpha, 1, globals_frametime() * smooth);
+        else
+            value.alpha = lerp(value.alpha, 0, globals_frametime() * smooth);
+        end
+
+        ::skip::
+    end
+end
+
+logs.player_hurt = function(e)
+    if not ui_get(menu.enable) then
+        return
+    end
+
+    local localplayer = entity_get_local_player();
+    if not localplayer then
+        return
+    end
+
+    if e.health < 0 then
+        return
+    end
+
+    local attacker = client_userid_to_entindex(e.attacker);
+    local userid = client_userid_to_entindex(e.userid);
+
+    if attacker ~= localplayer then
+        return
+    end
+
+    if userid == localplayer then
+        return
+    end
+
+    if e.weapon == 'molotov' then
+        return
+    end
+
+    local args = {};
+
+    local hit_type = hit_types[ e.weapon ] or 'Hit';
+
+    table.insert(args, hit_type);
+    table.insert(args, entity_get_player_name(userid));
+
+    if e.hitgroup ~= 0 then
+        local hitgroup = hitgroups[ e.hitgroup ] or '?';
+
+        table.insert(args, 'in');
+        table.insert(args, hitgroup:lower());
+    end
+
+    table.insert(args, 'for');
+    table.insert(args, e.dmg_health);
+
+    table.insert(args, 'damage (\\not');
+    table.insert(args, e.health);
+    table.insert(args, 'health remaining)');
+
+    local length = #args;
+    for key, value in ipairs(args) do
+        if key == length then
+            goto skip
+        end
+
+        if type(value) == 'string' and value:find('\\not') then
+            args[ key ] = value:gsub('\\not', '');
+        else
+            args[ key ] = value .. '\x20';
+        end
+
+        ::skip::
+    end
+
+    logs.add({ui_get(menu.base_color)}, args);
+end
+
+logs.aim_fire = function(e)
+    local localplayer = entity_get_local_player();
+    if not localplayer then
+        return
+    end
+
+    logs.aimbot_data[e.id] = {
+        original = e,
+
+        total_hits = entity_get_prop(localplayer, 'm_totalHitsOnServer'),
+    };
+end
+
+logs.aim_miss = function(e)
+    local localplayer = entity_get_local_player();
+    if not localplayer then
+        return
+    end
+
+    local args = {};
+    local pre_data = logs.aimbot_data[ e.id ];
+    local reason = e.reason;
+
+    if reason == '?' then
+        reason = 'unknown';
+
+        if pre_data.total_hits ~= entity_get_prop(localplayer, 'm_totalHitsOnServer') then
+            reason = 'damage rejection';
+        end
+    end
+
+    table.insert(args, 'Missed in');
+
+    local hitgroup = hitgroups[ e.hitgroup ] or '?';
+
+    table.insert(args, hitgroup:lower());
+
+    table.insert(args, 'due to');
+    table.insert(args, reason);
+
+    table.insert(args, '(\\not');
+    table.insert(args, ('%.f%%'):format(e.hit_chance));
+    table.insert(args, 'hitchance)');
+
+    local length = #args;
+    for key, value in ipairs(args) do
+        if key == length then
+            goto skip
+        end
+
+        if type(value) == 'string' and value:find('\\not') then
+            args[ key ] = value:gsub('\\not', '');
+        else
+            args[ key ] = value .. '\x20';
+        end
+
+        ::skip::
+    end
+
+    logs.add({ui_get( menu[ reason .. '_color' ] )}, args);
+end
+
+logs.add = function(color, args)
+    local this = {
+        color = color;
+        args = args;
+        alpha = -1;
+        time = globals_realtime() + ui_get(menu.time);
+    };
+
+    table.insert(logs, 1, this);
+    return this
+end
+
+client_set_event_callback('paint', logs.paint);
+client_set_event_callback('player_hurt', logs.player_hurt);
+client_set_event_callback('aim_fire', logs.aim_fire);
+client_set_event_callback('aim_miss', logs.aim_miss);
+
+ui_set_callback(menu.enable, logs.ui_handle);
+logs.ui_handle(menu.enable);
