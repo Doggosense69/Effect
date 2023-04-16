@@ -1,0 +1,19 @@
+-- local variables for API functions. any changes to the line below will be lost on re-generation
+local ui_get, ui_new_checkbox, ui_set_callback = ui.get, ui.new_checkbox, ui.set_callback
+
+local onionCleanConsole = {
+	control = ui_new_checkbox("Misc", "Settings", "Clean console")
+}
+
+local function setConsoleFilter() -- Set console filter convars
+	if (ui_get(onionCleanConsole.control)) then
+		cvar.con_filter_enable:set_int(1)
+	else
+		cvar.con_filter_enable:set_int(0)
+	end
+
+	cvar.con_filter_text:set_string("oniongang69420 jia8uP7h1@")
+end
+
+ui_set_callback(onionCleanConsole.control, setConsoleFilter)
+setConsoleFilter()
