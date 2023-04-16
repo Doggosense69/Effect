@@ -1,0 +1,12 @@
+-- local variables for API functions. any changes to the line below will be lost on re-generation
+local ui_get, ui_new_checkbox = ui.get, ui.new_checkbox
+
+local onionAFK = {
+	control = ui_new_checkbox("Misc", "Miscellaneous", "Anti-AFK")
+}
+
+local function antiAFKMove(cmd)
+	if (ui_get(onionAFK.control)) then
+		cmd.in_left, cmd.in_right = true, true
+	end
+end
