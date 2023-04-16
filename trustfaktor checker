@@ -1,0 +1,111 @@
+-- local variables for API functions. any changes to the line below will be lost on re-generation
+local client_delay_call, client_exec, client_set_event_callback, client_timestamp, panorama_loadstring, panorama_open, ui_reference, ui_set = client.delay_call, client.exec, client.set_event_callback, client.timestamp, panorama.loadstring, panorama.open, ui.reference, ui.set
+
+local panorama_events = require 'gamesense/panorama_events'
+local js = panorama_open()
+local LobbyAPI = js.LobbyAPI
+local PartyBrowserAPI = js.PartyBrowserAPI
+local PartyListAPI = js.PartyListAPI
+local joined_at = 0
+local last_hire_check = 0
+
+-- Disable autoaccept.
+ui_set(ui_reference("MISC", "Miscellaneous", "Auto-accept matchmaking"), false)
+
+-- Panorama
+local js_api = panorama_loadstring([[
+
+var MySteamID = MyPersonaAPI.GetXuid();
+
+var yellow_msg = $.Localize("SFUI_QMM_ERROR_X_AccountWarningTrustMinor", $.GetContextPanel().FindChildTraverse("PartyChat"));
+var yellow_name_init = yellow_msg.search("s1");
+var yello_msg_name_end = yellow_msg.slice(yellow_name_init+2, yellow_msg.length);
+
+var red_msg = $.Localize("SFUI_QMM_ERROR_X_AccountWarningTrustMajor", $.GetContextPanel().FindChildTraverse("PartyChat"));
+var red_name_init = red_msg.search("s1");
+var red_msg_name_end = red_msg.slice(red_name_init+2, red_msg.length);
+
+var Chat_Print = function(name, trust){
+	var final_msg = `${name}'s trustfactor is ${trust}.`;
+	var FilteredMessage = final_msg.split(' ').join('\u{00A0}');
+	PartyListAPI.SessionCommand('Game::Chat', `run all xuid ${MySteamID} chat ${FilteredMessage}`);
+	return true;
+}
+
+var _GetTrustMessages = function() {
+	var trust_message = false;
+
+	// Thanks csmit195
+	var party_chat = $.GetContextPanel().FindChildTraverse("PartyChat");
+	if (party_chat) {
+		var chat_lines = party_chat.FindChildTraverse("ChatLinesContainer")
+		if (chat_lines) {
+			chat_lines.Children().forEach(el => {
+				var child = el.GetChild(0);
+				if (child && child.text){
+					var chat_str = child.text;
+					if (chat_str.search(yello_msg_name_end) != -1){
+						var name = chat_str.slice(yellow_name_init, chat_str.search(yello_msg_name_end))
+						trust_message = Chat_Print(name, "YELLOW");
+					}else if(chat_str.search(red_msg_name_end) != -1){
+					var name = chat_str.slice(red_name_init, chat_str.search(red_msg_name_end))
+					trust_message = Chat_Print(name, "RED");
+				}
+			}
+		})
+	}
+	if (!trust_message && LobbyAPI.GetTimeSpentMatchmaking() < 5){
+		Chat_Print("Everyone", "good for me")
+	}
+}
+}
+
+return {
+get_trust_messages: _GetTrustMessages
+}
+
+]], 'CSGOMainMenu')()
+
+-- Check chat lines on GC Hello.
+panorama_events.register_event("PanoramaComponent_GC_Hello", function()
+client_delay_call(1, function()
+js_api.get_trust_messages()
+end)
+end)
+
+client_set_event_callback("paint_ui", function()
+-- It'll quit if someone's queueing for more than 6 seconds.
+if LobbyAPI.GetTimeSpentMatchmaking() == 6 then
+LobbyAPI.CloseSession()
+joined_at = client_timestamp()
+end
+
+-- It keeps you looking for competitives matches.
+if client_timestamp() - last_hire_check > 5000 then
+last_hire_check = client_timestamp()
+if PartyListAPI.GetLocalPlayerForHireAdvertising() ~= "competitive-99" then
+	if PartyListAPI.IsPlayerForHireAdvertisingEnabledForGameMode("competitive") then
+		PartyListAPI.SetLocalPlayerForHireAdvertising("competitive")
+	end
+end
+end
+
+if PartyBrowserAPI.GetInvitesCount() == 0 then return end
+if LobbyAPI.IsSessionActive() then return end
+
+-- Join lobby if invited.
+PartyBrowserAPI.ActionJoinParty(PartyBrowserAPI.GetInviteXuidByIndex(0))
+joined_at = client_timestamp()
+client_delay_call(12, function()
+-- Delay for quitting.
+if LobbyAPI.IsSessionActive() and client_timestamp() - joined_at > 10000 then
+LobbyAPI.CloseSession()
+end
+end)
+
+end)
+
+-- If something fails and a match starts it'll disconnect...
+client_set_event_callback("net_update_start", function()
+client_exec("disconnect")
+end)
