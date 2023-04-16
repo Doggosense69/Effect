@@ -1,0 +1,43 @@
+-------- Rainbow menu color --------
+---------- Author: iTzGod ----------
+
+local rgb_menu = ui.new_checkbox("MISC", "Settings", "Rainbow Menu color")
+local rgb_speed = ui.new_slider("MISC", "Settings", "Rainbow Speed",  1, 10, 1, true, nil, .1)
+local menu_color = ui.reference("MISC", "Settings", "Menu color")
+
+local function HSV_RGB(h, s, v, a)
+    local r, g, b
+
+    local i = math.floor(h * 6);
+    local f = h * 6 - i;
+    local p = v * (1 - s);
+    local q = v * (1 - f * s);
+    local t = v * (1 - (1 - f) * s);
+
+    i = i % 6
+
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    elseif i == 5 then r, g, b = v, p, q
+    end
+    return r * 255, g * 255, b * 255, a * 255
+end
+
+local function rgb(speed, r_g_b)
+    local r, g, b, a = HSV_RGB(globals.realtime() * speed, 1, 1, 1)
+
+    r = r * r_g_b
+    g = g * r_g_b
+    b = b * r_g_b
+    return r, g, b
+end
+
+  client.set_event_callback('paint_ui', function()
+	local r, g, b = rgb((ui.get(rgb_speed)/10), 1)
+	if ui.get(rgb_menu) then
+		ui.set(menu_color, r, g, b, 255)
+	end
+end)
