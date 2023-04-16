@@ -1,0 +1,111 @@
+local ui_slider, ui_color_picker, ui_label, ui_get, ui_checkbox = ui.new_slider, ui.new_color_picker, ui.new_label, ui.get, ui.new_checkbox
+local renderer_gradient, renderer_rect = renderer.gradient, renderer.rectangle
+local client_screen_size, client_set_event_callback = client.screen_size, client.set_event_callback
+
+local defColorLabel = ui_label("LUA", "B", "Default bar color")
+local defColorPicker = ui_color_picker("LUA", "B", "Default bar color", 41, 128, 185, 255)
+
+local gradientTopColorLabel = ui_label("LUA", "B", "Top gradient color")
+local gradientTopColorPicker = ui_color_picker("LUA", "B", "Top gradient color", 41, 128, 185, 150)
+
+local gradientBotColorLabel = ui_label("LUA", "B", "Bottom gradient color")
+local gradientBotColorPicker = ui_color_picker("LUA", "B", "Bottom gradient color", 41, 128, 185, 0)
+
+local gradientLengthSlider = ui_slider("LUA", "B", "Gradient Length", 0, 100, 5, true, "%")
+
+local shouldRainbow = ui_checkbox("LUA", "B", "Rainbow bar")
+local rainbowSpeed = ui_slider("LUA", "B", "Rainbow Speed", 1, 100, 1, true, "%")
+
+local resolution = ui_slider("LUA", "B", "Rainbow Resolution", 1, 15, 7, true, "")
+
+-- https://github.com/tomlum/ColorSwapDemo/blob/master/hsb.lua
+local function HSB2RGB(h, s, v, a)
+    h = h/255
+    s = s/255
+    v = v/255
+    a = a/255
+    local r,g,b
+    local i
+    local f, p, q, t
+    if( s == 0 ) then
+        r = v
+        g = v
+        b = v
+        return {r*255,g*255,b*255,a*255}
+    end
+
+    while(h > 1) do
+        h = h - 1
+    end
+
+    h = h*6
+    i = math.floor( h )
+    f = h - i
+    p = v * ( 1 - s )
+    q = v * ( 1 - (s * f))
+    t = v * ( 1 - (s * ( 1 - f )))
+    if i == 0 then
+        r = v
+        g = t
+        b = p
+    elseif i == 1 then
+        r = q
+        g = v
+        b = p
+    elseif i == 2 then
+        r = p
+        g = v
+        b = t
+    elseif i == 3 then
+        r = p
+        g = q
+        b = v
+    elseif i == 4 then
+        r = t
+        g = p
+        b = v
+    elseif i == 5 then
+        r = v
+        g = p
+        b = q
+    end
+    return r*255,g*255,b*255,a*255
+end
+
+local offset = 0
+
+local function drawBar()
+    local sW, sH = client_screen_size()
+    local res = ui_get(resolution)
+
+    local gradientHeight = sH * (ui_get(gradientLengthSlider) / 100)
+    local r1, g1, b1, a1 = ui_get(gradientTopColorPicker)
+    local r2, g2, b2, a2 = ui_get(gradientBotColorPicker)
+
+    if(not ui_get(shouldRainbow)) then
+
+        renderer_gradient(0, 0, sW, gradientHeight, r1, g1, b1, a1, r2, g2, b2, a2, false)
+
+        local r, g, b, a = ui_get(defColorPicker)
+        renderer_rect(0, 0, sW, 2, r, g, b, a)
+    else
+        for i = 0, res, 1 do
+            local hue = 1 + ((254 - 1) / (sW - 1)) * (i - 1)
+
+            local r, g, b = HSB2RGB(254 / (res+1) * i + (offset*255), 70, 255, 255)
+            local r2, g2, b2 = HSB2RGB(254 / (res+1) * (i+1) + (offset*255), 70, 255, 255)
+
+            local alpha = a1
+            for j = 0, gradientHeight, 1 do
+                renderer_gradient(sW / res * i, j, sW / res, 1, r, g, b, alpha, r2, g2, b2, alpha, true)
+                alpha = (j-0)/(gradientHeight-0) * (a2-a1) + a1
+            end
+
+            renderer_gradient(sW / res * i, 0, sW / res, 2, r, g, b, 255, r2, g2, b2, 255, true)
+        end
+    end
+
+    offset = offset + (0.1 / (101 - ui_get(rainbowSpeed)))
+end
+
+client_set_event_callback("paint_ui", drawBar)
